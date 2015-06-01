@@ -45,7 +45,7 @@ done
 sleep 3
 
 # it's responsive, is it already configured?
-couchbase-cli cluster-info -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
 if [ $? -eq 0 ]; then
     installed
     exit
@@ -65,7 +65,7 @@ echo '#'
 echo '# Looking for an existing cluster'
 echo '#'
 
-curl -v http://consul:8500/v1/catalog/service/couchbase | json -aH ServiceAddress
+curl -s http://consul:8500/v1/catalog/service/couchbase | json -aH ServiceAddress
 
 echo '#'
 echo '# Joining cluster'

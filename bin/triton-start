@@ -15,13 +15,13 @@ then
     # Start couchbase
     nohup /usr/local/bin/couchbase-start "$@" &
 
-    # /usr/local/bin/triton-configure
+    /usr/local/bin/triton-bootstrap
 
     echo "First time 'round the mulberry bush..."
     while true; do
         sleep 600
         echo "Once more 'round the mulberry bush..."
-        couchbase-cli cluster-info -c 127.0.0.1:8091 -u Administrator -p password
+        couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password
     done
 fi
 

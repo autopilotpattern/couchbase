@@ -21,7 +21,7 @@ RUN curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x
 
 RUN npm install -g json
 
-COPY bin/* /usr/local/bin/.
+COPY bin/* /usr/local/bin/
 
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
 VOLUME /opt/couchbase/var
