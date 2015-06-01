@@ -21,10 +21,10 @@ RUN curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x
 
 RUN npm install -g json
 
-COPY bin/couchbase-start /usr/local/bin/
-ENTRYPOINT ["couchbase-start"]
-CMD ["couchbase-server", "--", "-noinput"]
-# pass -noinput so it doesn't drop us in the erlang shell
+COPY bin/* /usr/local/bin/.
 
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
 VOLUME /opt/couchbase/var
+
+ENTRYPOINT ["triton-start"]
+CMD ["couchbase-server", "--", "-noinput"]
