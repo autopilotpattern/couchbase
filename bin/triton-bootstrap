@@ -30,11 +30,6 @@ installed ()
     echo '#'
 }
 
-if [ "$(couchbase-cli bucket-list -c 127.0.0.1:8091 -u Administrator -p password | grep ^$BUCKET)" == $BUCKET ]; then
-    installed
-    exit
-fi
-
 echo
 echo '#'
 echo '# Testing to see if Couchbase is running yet'
