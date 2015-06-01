@@ -15,7 +15,7 @@ then
     # Start couchbase
     nohup /usr/local/bin/couchbase-start "$@" &
 
-    /usr/local/bin/triton-configure
+    # /usr/local/bin/triton-configure
 
     echo "First time 'round the mulberry bush..."
     while true; do

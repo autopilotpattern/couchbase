@@ -1,25 +1,21 @@
 #!/bin/bash
 
+#
+# This script is automatically run once on each Couchbase instance 
+# to join an existing cluster
+#
+
 # Couchbase-related environment variables
-export MYIPPRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
-export MYIPPUBLIC=$(ip addr show eth1 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
-export MYMEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
-export MYCPUS=$(nproc)
-export MYCPUS=$(($MYCPUS>12?$(($MYMEMORY/2048)):$MYCPUS))
-export MYCPUS=$(($MYCPUS>1?$MYCPUS:1))
-export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $MYCPUS)
-export ERL_AFLAGS="+S $MYCPUS"
-export GOMAXPROCS=$MYCPUS
-export MYMEMORY=$(echo "$MYMEMORY*.80" | bc | grep -o "^[^\.]*")
+source /user/local/bin/triton-env
 
 installed ()
 {
+    echo
     echo '#'
     echo '# Couchbase is installed and configured'
     echo '#'
     echo "# Dashboard: http://$MYIPPUBLIC:8091"
     echo "# Internal IP: $MYIPPRIVATE"
-    echo "# Bucket: $BUCKET"
     echo '# username=Administrator'
     echo '# password=password'
     echo '#'
@@ -46,6 +42,14 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
         let COUCHBASERESPONSIVE=1
     fi
 done
+sleep 3
+
+# it's responsive, is it already configured?
+couchbase-cli cluster-info -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+if [ $? -eq 0 ]; then
+    installed
+    exit
+fi
 
 echo
 echo '#'
