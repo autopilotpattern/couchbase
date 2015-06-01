@@ -1,7 +1,7 @@
 #
 # Triton-optimized Couchbase
 #
-FROM 		couchbase/server:301
+FROM 		couchbase/server:enterprise-3.0.3
 MAINTAINER 	Casey Bisson <casey.bisson@gmail.com>
 
 # installed Node.js, similar to https://github.com/joyent/docker-node/blob/428d5e69763aad1f2d8f17c883112850535e8290/0.12/Dockerfile
@@ -19,7 +19,7 @@ RUN curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x
 	&& npm install -g npm@"$NPM_VERSION" \
 	&& npm cache clear
 
-RUN npm install -g npm
+RUN npm install -g json
 
 COPY bin/couchbase-start /usr/local/bin/
 ENTRYPOINT ["couchbase-start"]
