@@ -54,7 +54,7 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
         sleep .7
     fi
 done
-sleep 3
+sleep 1
 
 # it's responsive, is it already configured?
 couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
@@ -85,6 +85,49 @@ else
     echo '#'
 fi
 
+echo '#'
+echo '# Setting CPU limits for Couchbase and restarting'
+echo '#'
+
+# insert Triton-specific config details into the startup script
+cat /opt/couchbase/bin/couchbase-server | \
+sed "/export PATH/a export ERL_AFLAGS" | \
+sed "/export PATH/a ERL_AFLAGS='+S $MYCPUS'" | \
+sed "/export PATH/a export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS" | \
+sed "/export PATH/a COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $MYCPUS)" | \
+sed "/export PATH/a \# CPU limits to keep Couchbase from trying to schedule across all the CPUs it can see" | \
+sed '/export PATH/a
+' \
+> /root/couchbase-server-config.tmp
+
+# copy the temp back to the primary and delete the temp
+cat /root/couchbase-server-config.tmp > /opt/couchbase/bin/couchbase-server
+rm -f /root/couchbase-server-config.tmp
+
+# restart Couchbase
+/etc/init.d/couchbase-server restart
+
+COUCHBASERESPONSIVE=0
+while [ $COUCHBASERESPONSIVE != 1 ]; do
+    echo -n '.'
+
+    # test the default u/p
+    couchbase-cli server-info -c 127.0.0.1:8091 -u access -p password &> /dev/null
+    if [ $? -eq 0 ]; then
+        let COUCHBASERESPONSIVE=1
+    fi
+
+    # test the alternate u/p
+    couchbase-cli server-info -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+    if [ $? -eq 0 ]
+    then
+        let COUCHBASERESPONSIVE=1
+    else
+        sleep .7
+    fi
+done
+sleep 1
+
 echo
 echo '#'
 echo '# Initializing node'
@@ -114,6 +157,14 @@ then
         --bucket-type=couchbase \
         --bucket-ramsize=$MYMEMORY \
         --bucket-replica=1
+
+    # limit the number of threads for various operations on this bucket
+    # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html for more details
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_writers $(($MYCPUS>1?$MYCPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_readers $(($MYCPUS>1?$MYCPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_auxio 1
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_nonio 1
+
 else
     echo '#'
     echo '# Looking for an existing cluster'
