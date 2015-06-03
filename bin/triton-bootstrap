@@ -101,12 +101,14 @@ then
     echo '# Bootstrapping cluster'
     echo '#'
 
+    # initializing the cluster
     /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
         --cluster-init-username=Administrator \
         --cluster-init-password=password \
         --cluster-init-port=8091 \
         --cluster-init-ramsize=$MYMEMORY
 
+    # creating the bucket
     /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u Administrator -p password \
         --bucket=$BUCKET \
         --bucket-type=couchbase \
@@ -156,13 +158,26 @@ else
     echo '# Rebalancing cluster'
     echo '#'
 
-    couchbase-cli rebalance -c 127.0.0.1:8091 -u Administrator -p password
+    # doing this in a loop in case multiple containers are started at once
+    # it seems the rebalance command cannot be called while a rebalance is in progress
+    COUCHBASERESPONSIVE=0
+    while [ $COUCHBASERESPONSIVE != 1 ]; do
+        echo -n '.'
+
+        couchbase-cli rebalance -c 127.0.0.1:8091 -u Administrator -p password
+        if [ $? -eq 0 ]
+        then
+            let COUCHBASERESPONSIVE=1
+        else
+            sleep .7
+        fi
+    done
 fi
 
 
 echo
 echo '#'
-echo '# Confirming cluster status...'
+echo '# Confirming cluster health...'
 echo '#'
 
 COUCHBASERESPONSIVE=0
@@ -176,6 +191,9 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
     else
         sleep .7
     fi
+
+    # if this never exits, then it will never register as a healthy node in the cluster
+    # watch the logs for that...
 done
 
 echo
