@@ -111,10 +111,24 @@ echo '#'
 echo '# Initializing node'
 echo '#'
 
-/opt/couchbase/bin/couchbase-cli node-init -c 127.0.0.1:8091 -u access -p password \
-    --node-init-data-path=/opt/couchbase/var/lib/couchbase/data \
-    --node-init-index-path=/opt/couchbase/var/lib/couchbase/data \
-    --node-init-hostname=$MYIPPRIVATE
+COUCHBASERESPONSIVE=0
+while [ $COUCHBASERESPONSIVE != 1 ]; do
+    echo -n '.'
+
+    /opt/couchbase/bin/couchbase-cli node-init -c 127.0.0.1:8091 -u access -p password \
+        --node-init-data-path=/opt/couchbase/var/lib/couchbase/data \
+        --node-init-index-path=/opt/couchbase/var/lib/couchbase/data \
+        --node-init-hostname=$MYIPPRIVATE
+
+    if [ $? -eq 0 ]
+    then
+        let COUCHBASERESPONSIVE=1
+    else
+        sleep .7
+    fi
+done
+echo
+
 
 if [ "$1" = 'bootstrap' ]
 then
@@ -123,18 +137,42 @@ then
     echo '#'
 
     # initializing the cluster
-    /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
-        --cluster-init-username=Administrator \
-        --cluster-init-password=password \
-        --cluster-init-port=8091 \
-        --cluster-init-ramsize=$MYMEMORY
+    COUCHBASERESPONSIVE=0
+    while [ $COUCHBASERESPONSIVE != 1 ]; do
+        echo -n '.'
+
+        /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
+            --cluster-init-username=Administrator \
+            --cluster-init-password=password \
+            --cluster-init-port=8091 \
+            --cluster-init-ramsize=$MYMEMORY
+
+        if [ $? -eq 0 ]
+        then
+            let COUCHBASERESPONSIVE=1
+        else
+            sleep .7
+        fi
+    done
 
     # creating the bucket
-    /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u Administrator -p password \
-        --bucket=$BUCKET \
-        --bucket-type=couchbase \
-        --bucket-ramsize=$MYMEMORY \
-        --bucket-replica=1
+    COUCHBASERESPONSIVE=0
+    while [ $COUCHBASERESPONSIVE != 1 ]; do
+        echo -n '.'
+
+        /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u Administrator -p password \
+            --bucket=$BUCKET \
+            --bucket-type=couchbase \
+            --bucket-ramsize=$MYMEMORY \
+            --bucket-replica=1
+
+        if [ $? -eq 0 ]
+        then
+            let COUCHBASERESPONSIVE=1
+        else
+            sleep .7
+        fi
+    done
 
     # limit the number of threads for various operations on this bucket
     # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html for more details
