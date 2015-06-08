@@ -73,7 +73,7 @@ echo '#'
 echo '# Checking Consul availability'
 echo '#'
 
-curl -fs --retry --retry-delay 3 http://consul:8500/v1/agent/services &> /dev/null
+curl -fs --retry 7 --retry-delay 3 http://consul:8500/v1/agent/services &> /dev/null
 if [ $? -ne 0 ]
 then
     echo '#'
@@ -268,6 +268,6 @@ echo '#'
 echo '# Registering service instance'
 echo '#'
 
-curl -f --retry --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-%s","Name":"couchbase","Address":"%s"}' $MYIPPRIVATE $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-%s","Name":"couchbase","Address":"%s"}' $MYIPPRIVATE $MYIPPRIVATE)"
 
 installed
