@@ -82,6 +82,7 @@ then
     echo '#'
     echo '# Consul is required, but unreachable'
     echo '#'
+    curl http://consul:8500/v1/agent/services
     exit
 else
     echo '# Consul instance found and responsive'
