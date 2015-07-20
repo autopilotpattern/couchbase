@@ -12,17 +12,12 @@ then
         exit 1
     fi
 
-    # Start couchbase
-    nohup /usr/local/bin/couchbase-start "$@" &
+    # Start the bootstrap script and background it
+    # the bootstrap will wait for Couchbase to start, then die when done
+    /usr/local/bin/triton-bootstrap &
 
-    /usr/local/bin/triton-bootstrap
-
-    echo "First time 'round the mulberry bush..."
-    while true; do
-        sleep 600
-        echo "Once more 'round the mulberry bush..."
-        couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password
-    done
+    # Start Couchbase
+    /usr/local/bin/couchbase-start "$@"
 fi
 
 exec "$@"

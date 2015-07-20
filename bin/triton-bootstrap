@@ -17,6 +17,9 @@ export GOMAXPROCS=$MYCPUS
 export MYMEMORY=$((($MYMEMORY/10)*8))
 export BUCKET=$2
 
+# rest a moment while Couchabase starts (it's started from triton-start.)
+sleep 1.3
+
 installed ()
 {
     echo
