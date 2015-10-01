@@ -1,7 +1,7 @@
 #
 # Triton-optimized Couchbase
 #
-FROM 		centos:6
+FROM 		centos:centos6.6
 MAINTAINER 	Casey Bisson <casey.bisson@gmail.com>
 
 #
