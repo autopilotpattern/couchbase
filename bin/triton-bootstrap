@@ -89,6 +89,12 @@ else
     echo '#'
 fi
 
+#
+# Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
+#
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s"}' $MYIPPRIVATE $MYIPPRIVATE)"
+
+
 COUCHBASERESPONSIVE=0
 while [ $COUCHBASERESPONSIVE != 1 ]; do
     echo -n '.'
@@ -139,6 +145,11 @@ then
     echo '#'
     echo '# Bootstrapping cluster'
     echo '#'
+
+    #
+    # Deregister this instance from the list of unconfigured instances in Consul
+    #
+    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$MYIPPRIVATE
 
     # initializing the cluster
     COUCHBASERESPONSIVE=0
@@ -203,6 +214,10 @@ else
         fi
     done
 
+    #
+    # Deregister this instance from the list of unconfigured instances in Consul
+    #
+    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$MYIPPRIVATE
 
     echo
     echo '#'
@@ -269,9 +284,11 @@ done
 
 echo
 echo '#'
-echo '# Registering service instance'
+echo '# Register the configured Couchbase instance'
 echo '#'
 
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-%s","Name":"couchbase","Address":"%s"}' $MYIPPRIVATE $MYIPPRIVATE)"
+# Note that the healthcheck
+
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID": "couchbase-%s","Name": "couchbase","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $MYIPPRIVATE $MYIPPRIVATE $MYIPPRIVATE)"
 
 installed
