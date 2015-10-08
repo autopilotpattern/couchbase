@@ -92,7 +92,11 @@ fi
 #
 # Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
 #
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s"}' $MYIPPRIVATE $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $HOSTNAME $MYIPPRIVATE)"
+
+# pass the healthcheck
+curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=initial+startup"
+
 
 
 COUCHBASERESPONSIVE=0
@@ -149,7 +153,7 @@ then
     #
     # Deregister this instance from the list of unconfigured instances in Consul
     #
-    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$MYIPPRIVATE
+    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$HOSTNAME
 
     # initializing the cluster
     COUCHBASERESPONSIVE=0
@@ -205,11 +209,15 @@ else
     while [ $CLUSTERFOUND != 1 ]; do
         echo -n '.'
 
-        CLUSTERIP=$(curl -L -s -f curl http://consul:8500/v1/health/service/couchbase?passing | json -aH Service.Address | head -1)
+        CLUSTERIP=$(curl -L -s -f http://consul:8500/v1/health/service/couchbase?passing | json -aH Service.Address | head -1)
         if [ -n "$CLUSTERIP" ]
         then
             let CLUSTERFOUND=1
         else
+            # Update the healthcheck for this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
+            curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=polling+for+cluster"
+
+            # sleep for a bit
             sleep 7
         fi
     done
@@ -217,7 +225,7 @@ else
     #
     # Deregister this instance from the list of unconfigured instances in Consul
     #
-    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$MYIPPRIVATE
+    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$HOSTNAME
 
     echo
     echo '#'
@@ -289,6 +297,6 @@ echo '#'
 
 # Note that the healthcheck
 
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID": "couchbase-%s","Name": "couchbase","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $MYIPPRIVATE $MYIPPRIVATE $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID": "couchbase-%s","Name": "couchbase","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $HOSTNAME $MYIPPRIVATE $MYIPPRIVATE)"
 
 installed
