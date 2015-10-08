@@ -92,7 +92,11 @@ fi
 #
 # Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
 #
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s","checks": [{"ttl": "59s"}]}' $HOSTNAME $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $HOSTNAME $MYIPPRIVATE)"
+
+# pass the healthcheck
+curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=initial+startup"
+
 
 
 COUCHBASERESPONSIVE=0
@@ -210,8 +214,8 @@ else
         then
             let CLUSTERFOUND=1
         else
-            # Renew the registration of this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
-            curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s","checks": [{"ttl": "29"}]}' $HOSTNAME $MYIPPRIVATE)"
+            # Update the healthcheck for this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
+            curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=polling+for+cluster"
 
             # sleep for a bit
             sleep 7
