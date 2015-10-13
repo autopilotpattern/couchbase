@@ -1,12 +1,28 @@
 #!/bin/bash
 
 #
-# This script is run once on the first Couchbase instance to bootstrap the cluster
+# This script is run once on startup to find and join a Couchbase cluster
+# it will continue polling for a cluster until one is found
+#
+# The script can also be run with arguments to bootstrap the cluster
 #
 
-# Couchbase-related environment variables
+# This container's IP(s)
 export MYIPPRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
 export MYIPPUBLIC=$(ip addr show eth1 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+
+# Discovery vars
+export COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
+export CONSUL_HOST=${CONSUL_HOST:-'http://consul:8500'}
+
+# Couchbase username and password
+export COUCHBASE_USER=${COUCHBASE_USER:-Administrator}
+export COUCHBASE_PASS=${COUCHBASE_PASS:-password}
+
+# The bucket to create when bootstrapping
+export COUCHBASE_BUCKET=$2
+
+# Couchbase resource limits
 export MYMEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
 export MYCPUS=$(nproc)
 export MYCPUS=$(($MYCPUS>12?$(($MYMEMORY/3072)):$MYCPUS))
@@ -15,10 +31,6 @@ export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $MYCPUS)
 export ERL_AFLAGS="+S $MYCPUS"
 export GOMAXPROCS=$MYCPUS
 export MYMEMORY=$((($MYMEMORY/10)*8))
-export BUCKET=$2
-
-# rest a moment while Couchabase starts (it's started from triton-start.)
-sleep 1.3
 
 installed ()
 {
@@ -26,12 +38,16 @@ installed ()
     echo '#'
     echo '# Couchbase is installed and configured'
     echo '#'
-    echo "# Dashboard: http://$MYIPPUBLIC:8091"
+    echo "#   Dashboard: http://$MYIPPUBLIC:8091"
     echo "# Internal IP: $MYIPPRIVATE"
-    echo '# username=Administrator'
-    echo '# password=password'
+    echo "#    username: $COUCHBASE_USER"
+    echo "#    password: $COUCHBASE_PASS"
     echo '#'
 }
+
+
+# rest a moment while Couchabase starts (it's started from triton-start.)
+sleep 1.3
 
 echo
 echo '#'
@@ -49,7 +65,7 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
     fi
 
     # test the alternate u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+    couchbase-cli server-info -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
     if [ $? -eq 0 ]
     then
         let COUCHBASERESPONSIVE=1
@@ -60,7 +76,7 @@ done
 sleep 1
 
 # it's responsive, is it already configured?
-couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+couchbase-cli server-list -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
 if [ $? -eq 0 ]; then
     echo
     echo '#'
@@ -76,13 +92,13 @@ echo '#'
 echo '# Checking Consul availability'
 echo '#'
 
-curl -fs --retry 7 --retry-delay 3 http://consul:8500/v1/agent/services &> /dev/null
+curl -fs --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/services &> /dev/null
 if [ $? -ne 0 ]
 then
     echo '#'
     echo '# Consul is required, but unreachable'
     echo '#'
-    curl http://consul:8500/v1/agent/services
+    curl $CONSUL_HOST/v1/agent/services
     exit
 else
     echo '# Consul instance found and responsive'
@@ -92,10 +108,10 @@ fi
 #
 # Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
 #
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID":"couchbase-unconfigured-%s","Name":"couchbase-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $HOSTNAME $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID":"%s-unconfigured-%s","Name":"%s-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $MYIPPRIVATE)"
 
 # pass the healthcheck
-curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=initial+startup"
+curl -f --retry 7 --retry-delay 3 "$CONSUL_HOST/v1/agent/check/pass/service:$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME?note=initial+startup"
 
 
 
@@ -110,7 +126,7 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
     fi
 
     # test the alternate u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u Administrator -p password &> /dev/null
+    couchbase-cli server-info -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
     if [ $? -eq 0 ]
     then
         let COUCHBASERESPONSIVE=1
@@ -153,7 +169,7 @@ then
     #
     # Deregister this instance from the list of unconfigured instances in Consul
     #
-    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$HOSTNAME
+    curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/deregister/$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME
 
     # initializing the cluster
     COUCHBASERESPONSIVE=0
@@ -161,8 +177,8 @@ then
         echo -n '.'
 
         /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
-            --cluster-init-username=Administrator \
-            --cluster-init-password=password \
+            --cluster-init-username=$COUCHBASE_USER \
+            --cluster-init-password=$COUCHBASE_PASS \
             --cluster-init-port=8091 \
             --cluster-init-ramsize=$MYMEMORY
 
@@ -179,8 +195,8 @@ then
     while [ $COUCHBASERESPONSIVE != 1 ]; do
         echo -n '.'
 
-        /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u Administrator -p password \
-            --bucket=$BUCKET \
+        /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS \
+            --bucket=$COUCHBASE_BUCKET \
             --bucket-type=couchbase \
             --bucket-ramsize=$MYMEMORY \
             --bucket-replica=1
@@ -195,10 +211,10 @@ then
 
     # limit the number of threads for various operations on this bucket
     # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html for more details
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_writers $(($MYCPUS>1?$MYCPUS/2:1))
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_readers $(($MYCPUS>1?$MYCPUS/2:1))
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_auxio 1
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $BUCKET set flush_param max_num_nonio 1
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_writers $(($MYCPUS>1?$MYCPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_readers $(($MYCPUS>1?$MYCPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_auxio 1
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_nonio 1
 
 else
     echo '#'
@@ -209,13 +225,13 @@ else
     while [ $CLUSTERFOUND != 1 ]; do
         echo -n '.'
 
-        CLUSTERIP=$(curl -L -s -f http://consul:8500/v1/health/service/couchbase?passing | json -aH Service.Address | head -1)
+        CLUSTERIP=$(curl -L -s -f $CONSUL_HOST/v1/health/service/$COUCHBASE_SERVICE_NAME?passing | json -aH Service.Address | head -1)
         if [ -n "$CLUSTERIP" ]
         then
             let CLUSTERFOUND=1
         else
             # Update the healthcheck for this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
-            curl -f --retry 7 --retry-delay 3 "http://consul:8500/v1/agent/check/pass/service:couchbase-unconfigured-$HOSTNAME?note=polling+for+cluster"
+            curl -f --retry 7 --retry-delay 3 "$CONSUL_HOST/v1/agent/check/pass/service:$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME?note=polling+for+cluster"
 
             # sleep for a bit
             sleep 7
@@ -225,7 +241,7 @@ else
     #
     # Deregister this instance from the list of unconfigured instances in Consul
     #
-    curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/deregister/couchbase-unconfigured-$HOSTNAME
+    curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/deregister/$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME
 
     echo
     echo '#'
@@ -236,7 +252,7 @@ else
     while [ $COUCHBASERESPONSIVE != 1 ]; do
         echo -n '.'
 
-        curl -s -i -f -u Administrator:password \
+        curl -s -i -f -u $COUCHBASE_USER:$COUCHBASE_PASS \
             "http://$CLUSTERIP:8091/controller/addNode" \
             -d "hostname=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')&user=admin&password=password"
         if [ $? -eq 0 ]
@@ -258,7 +274,7 @@ else
     while [ $COUCHBASERESPONSIVE != 1 ]; do
         echo -n '.'
 
-        couchbase-cli rebalance -c 127.0.0.1:8091 -u Administrator -p password
+        couchbase-cli rebalance -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS
         if [ $? -eq 0 ]
         then
             let COUCHBASERESPONSIVE=1
@@ -278,7 +294,7 @@ COUCHBASERESPONSIVE=0
 while [ $COUCHBASERESPONSIVE != 1 ]; do
     echo -n '.'
 
-    couchbase-cli server-list -c 127.0.0.1:8091 -u Administrator -p password
+    couchbase-cli server-list -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS
     if [ $? -eq 0 ]
     then
         let COUCHBASERESPONSIVE=1
@@ -295,8 +311,6 @@ echo '#'
 echo '# Register the configured Couchbase instance'
 echo '#'
 
-# Note that the healthcheck
-
-curl -f --retry 7 --retry-delay 3 http://consul:8500/v1/agent/service/register -d "$(printf '{"ID": "couchbase-%s","Name": "couchbase","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $HOSTNAME $MYIPPRIVATE $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID": "%s-%s","Name": "%s","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $MYIPPRIVATE $MYIPPRIVATE)"
 
 installed
