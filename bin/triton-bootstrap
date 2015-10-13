@@ -31,7 +31,7 @@ export COUCHBASE_BUCKET=$2
 # Couchbase resource limits
 export AVAIL_MEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
 export AVAIL_CPUS=$(nproc)
-export COUCHBASE_CPUS=$(($AVAIL_CPUS>12?$(($AVAIL_MEMORY/3072)):$AVAIL_CPUS))
+export COUCHBASE_CPUS=$(($AVAIL_CPUS>8?8:$AVAIL_CPUS))
 export COUCHBASE_CPUS=$(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS:1))
 export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $COUCHBASE_CPUS)
 export ERL_AFLAGS="+S $COUCHBASE_CPUS"
