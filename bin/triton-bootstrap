@@ -8,8 +8,14 @@
 #
 
 # This container's IP(s)
-export MYIPPRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
-export MYIPPUBLIC=$(ip addr show eth1 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+export IP_PRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+IP_HAVEPUBLIC=$(ip link show | grep eth1)
+if [[ $IP_HAVEPUBLIC && ${IP_HAVEPUBLIC-x} ]]
+    then
+    export IP_PUBLIC=$(ip addr show eth1 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+else
+    export IP_PUBLIC=$PRIVATE_IP
+fi
 
 # Discovery vars
 export COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
@@ -23,14 +29,14 @@ export COUCHBASE_PASS=${COUCHBASE_PASS:-password}
 export COUCHBASE_BUCKET=$2
 
 # Couchbase resource limits
-export MYMEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
-export MYCPUS=$(nproc)
-export MYCPUS=$(($MYCPUS>12?$(($MYMEMORY/3072)):$MYCPUS))
-export MYCPUS=$(($MYCPUS>1?$MYCPUS:1))
-export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $MYCPUS)
-export ERL_AFLAGS="+S $MYCPUS"
-export GOMAXPROCS=$MYCPUS
-export MYMEMORY=$((($MYMEMORY/10)*8))
+export AVAIL_MEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
+export AVAIL_CPUS=$(nproc)
+export COUCHBASE_CPUS=$(($AVAIL_CPUS>12?$(($AVAIL_MEMORY/3072)):$AVAIL_CPUS))
+export COUCHBASE_CPUS=$(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS:1))
+export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $COUCHBASE_CPUS)
+export ERL_AFLAGS="+S $COUCHBASE_CPUS"
+export GOMAXPROCS=$COUCHBASE_CPUS
+export COUCHBASE_MEMORY=$((($AVAIL_MEMORY/10)*8))
 
 installed ()
 {
@@ -38,8 +44,8 @@ installed ()
     echo '#'
     echo '# Couchbase is installed and configured'
     echo '#'
-    echo "#   Dashboard: http://$MYIPPUBLIC:8091"
-    echo "# Internal IP: $MYIPPRIVATE"
+    echo "#   Dashboard: http://$IP_PUBLIC:8091"
+    echo "# Internal IP: $IP_PRIVATE"
     echo "#    username: $COUCHBASE_USER"
     echo "#    password: $COUCHBASE_PASS"
     echo '#'
@@ -108,7 +114,7 @@ fi
 #
 # Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
 #
-curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID":"%s-unconfigured-%s","Name":"%s-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID":"%s-unconfigured-%s","Name":"%s-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $IP_PRIVATE)"
 
 # pass the healthcheck
 curl -f --retry 7 --retry-delay 3 "$CONSUL_HOST/v1/agent/check/pass/service:$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME?note=initial+startup"
@@ -148,7 +154,7 @@ while [ $COUCHBASERESPONSIVE != 1 ]; do
     /opt/couchbase/bin/couchbase-cli node-init -c 127.0.0.1:8091 -u access -p password \
         --node-init-data-path=/opt/couchbase/var/lib/couchbase/data \
         --node-init-index-path=/opt/couchbase/var/lib/couchbase/data \
-        --node-init-hostname=$MYIPPRIVATE
+        --node-init-hostname=$IP_PRIVATE
 
     if [ $? -eq 0 ]
     then
@@ -180,7 +186,7 @@ then
             --cluster-init-username=$COUCHBASE_USER \
             --cluster-init-password=$COUCHBASE_PASS \
             --cluster-init-port=8091 \
-            --cluster-init-ramsize=$MYMEMORY \
+            --cluster-init-ramsize=$COUCHBASE_MEMORY \
             --services=data,index,query
 
         if [ $? -eq 0 ]
@@ -199,7 +205,7 @@ then
         /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS \
             --bucket=$COUCHBASE_BUCKET \
             --bucket-type=couchbase \
-            --bucket-ramsize=$MYMEMORY \
+            --bucket-ramsize=$COUCHBASE_MEMORY \
             --bucket-replica=1
 
         if [ $? -eq 0 ]
@@ -212,8 +218,8 @@ then
 
     # limit the number of threads for various operations on this bucket
     # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html for more details
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_writers $(($MYCPUS>1?$MYCPUS/2:1))
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_readers $(($MYCPUS>1?$MYCPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_writers $(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS/2:1))
+    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_readers $(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS/2:1))
     /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_auxio 1
     /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_nonio 1
 
@@ -254,7 +260,7 @@ else
         echo -n '.'
 
         curl -s -i -f -u $COUCHBASE_USER:$COUCHBASE_PASS \
-            -d "hostname=${MYIPPRIVATE}&user=admin&password=password" \
+            -d "hostname=${IP_PRIVATE}&user=admin&password=password" \
             "http://$CLUSTERIP:8091/controller/addNode"
 
         if [ $? -eq 0 ]
@@ -313,6 +319,6 @@ echo '#'
 echo '# Register the configured Couchbase instance'
 echo '#'
 
-curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID": "%s-%s","Name": "%s","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $MYIPPRIVATE $MYIPPRIVATE)"
+curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID": "%s-%s","Name": "%s","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $IP_PRIVATE $IP_PRIVATE)"
 
 installed
