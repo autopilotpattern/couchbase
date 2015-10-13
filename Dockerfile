@@ -1,25 +1,8 @@
 #
 # Triton-optimized Couchbase
 #
-FROM 		couchbase/server:enterprise-4.0.0-3508
+FROM 		couchbase/server:enterprise-4.0.0
 MAINTAINER 	Casey Bisson <casey.bisson@gmail.com>
-
-#
-# We started with the 4.0 beta base image, but there are more recent builds available, so...
-# update Couchbase to the most recent available build
-#
-RUN curl -SLO http://latestbuilds.hq.couchbase.com/couchbase-server/sherlock/4050/couchbase-server-enterprise_4.0.0-4050-ubuntu12.04_amd64.deb \
-    && dpkg -i couchbase-server-enterprise_4.0.0-4050-ubuntu12.04_amd64.deb
-
-RUN curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.gz" \
-	&& curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc" \
-	&& gpg --verify SHASUMS256.txt.asc \
-	&& grep " node-v$NODE_VERSION-linux-x64.tar.gz\$" SHASUMS256.txt.asc | sha256sum -c - \
-	&& tar -xzf "node-v$NODE_VERSION-linux-x64.tar.gz" -C /usr/local --strip-components=1 \
-	&& rm "node-v$NODE_VERSION-linux-x64.tar.gz" SHASUMS256.txt.asc \
-	&& npm install -g npm@"$NPM_VERSION" \
-	&& npm cache clear
-
 
 #
 # Install Node.js
