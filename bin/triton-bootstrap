@@ -180,7 +180,8 @@ then
             --cluster-init-username=$COUCHBASE_USER \
             --cluster-init-password=$COUCHBASE_PASS \
             --cluster-init-port=8091 \
-            --cluster-init-ramsize=$MYMEMORY
+            --cluster-init-ramsize=$MYMEMORY \
+            --services=data,index,query
 
         if [ $? -eq 0 ]
         then
@@ -253,8 +254,9 @@ else
         echo -n '.'
 
         curl -s -i -f -u $COUCHBASE_USER:$COUCHBASE_PASS \
-            "http://$CLUSTERIP:8091/controller/addNode" \
-            -d "hostname=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')&user=admin&password=password"
+            -d "hostname=${MYIPPRIVATE}&user=admin&password=password" \
+            "http://$CLUSTERIP:8091/controller/addNode"
+
         if [ $? -eq 0 ]
         then
             let COUCHBASERESPONSIVE=1
