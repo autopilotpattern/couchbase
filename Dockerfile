@@ -61,6 +61,14 @@ RUN npm install -g json
 COPY bin/* /usr/local/bin/
 
 #
+# User and discovery env vars
+#
+ENV COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
+ENV CONSUL_HOST=${CONSUL_HOST:-'http://consul:8500'}
+ENV COUCHBASE_USER=${COUCHBASE_USER:-Administrator}
+ENV COUCHBASE_PASS=${COUCHBASE_PASS:-password}
+
+#
 # Metadata
 #
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
