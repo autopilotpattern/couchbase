@@ -1,58 +1,31 @@
-#
-# Using a single Consul host is _highly_ discouraged, but yolo
-#
-consul:
-    image: progrium/consul:latest
-    command: -server -bootstrap -ui-dir /ui
-    restart: always
-    mem_limit: 128m
-    ports:
-        - 53
-        - 8300
-        - 8301
-        - 8302
-        - 8400
-        - 8500
-    dns:
-       - 127.0.0.1
-
-#
-# Manually bootstrap the first instance, then...
-# Scale this tier and each additional container/instance will automatically self-configure as a member of the cluster
-#
+# The first instance will automatically bootstrap the cluster.
+# Scale this tier and each additional instance will automatically
+# self-configure as a member of the cluster
 couchbase:
     image: autopilotpattern/couchbase:enterprise-4.0.0-r1
     restart: always
     mem_limit: 4096m
-    links:
-        - consul
     ports:
         - 8091
         - 8092
-        - 11207
-        - 11210
-        - 11211
-        - 18091
-        - 18092
     environment:
-        - CONSUL_HOST=http://consul:8500
-        - COUCHBASE_SERVICE_NAME=couchbase
-        - COUCHBASE_USER=Administrator
-        - COUCHBASE_PASS=password
+        - CONSUL
+        - COUCHBASE_USER
+        - COUCHBASE_PASS
+    labels:
+      - triton.cns.services=couchbase
 
-#
-# A dummy client to create some load
-#
-# This container is is not configurable and expects the following:
-# CONSUL_HOST=http://consul:8500
-# COUCHBASE_SERVICE_NAME=couchbase
-# COUCHBASE_USER=Administrator
-# COUCHBASE_PASS=password
-#
-benchmark:
-    image: autopilotpattern/couchbase-cloud-benchmark
+
+# Start with a single host which will bootstrap the cluster.
+# In production we'll want to use an HA cluster.
+consul:
+    image: progrium/consul:latest
     restart: always
-    mem_limit: 1024m
-    command: start.bash
-    links:
-        - consul
+    mem_limit: 128m
+    ports:
+      - 8500 # expose Consul's UI on the public IP
+    dns:
+       - 127.0.0.1
+    labels:
+      - triton.cns.services=consul
+    command: -server -bootstrap -ui-dir /ui
