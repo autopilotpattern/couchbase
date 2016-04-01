@@ -1,0 +1,20 @@
+couchbase:
+    extends:
+      file: docker-compose.yml
+      service: couchbase
+    build: .
+    mem_limit: 1g
+    environment:
+      - CONSUL=consul
+    links:
+      - consul:consul
+    ports:
+      - "8091:8091"
+      - "8092:8092"
+
+consul:
+    extends:
+      file: docker-compose.yml
+      service: consul
+    ports:
+      - "8500:8500"

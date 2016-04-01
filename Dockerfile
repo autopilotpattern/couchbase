@@ -35,12 +35,6 @@ RUN export CB_SHA1=c25d3af30a822f7178b671007dcd013998d9fae1 \
 COPY etc/containerbuddy.json etc/containerbuddy.json
 COPY bin/* /usr/local/bin/
 
-# User and discovery env vars
-#ENV COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
-#ENV CONSUL_HOST=${CONSUL_HOST:-'http://consul:8500'}
-#ENV COUCHBASE_USER=${COUCHBASE_USER:-Administrator}
-#ENV COUCHBASE_PASS=${COUCHBASE_PASS:-password}
-
 # Metadata
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
 VOLUME /opt/couchbase/var
