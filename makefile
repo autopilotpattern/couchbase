@@ -7,9 +7,8 @@ TAG?=latest
 
 # run the Docker build
 build:
-	docker build -t="misterbisson/triton-couchbase:${TAG}" .
+	docker build -t="autopilotpattern/couchbase:${TAG}" .
 
 # push our image to the public registry
 ship: build
-	docker push "misterbisson/triton-couchbase:${TAG}"
-
+	docker push "autopilotpattern/couchbase:${TAG}"
