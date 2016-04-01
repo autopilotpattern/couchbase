@@ -1,0 +1,13 @@
+{
+  "consul": "{{ .CONSUL }}:8500",
+  "onStart": "/usr/local/bin/manage.sh start",
+  "services": [
+    {
+      "name": "couchbase",
+      "port": 80,
+      "health": "/usr/local/bin/manage.sh check",
+      "poll": 5,
+      "ttl": 15,
+    }
+  ]
+}
