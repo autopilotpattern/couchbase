@@ -15,7 +15,7 @@ trap cleanup EXIT
 export IP_PRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
 
 # Discovery vars
-export COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
+COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase-api}
 export CONSUL=${CONSUL:-consul}
 
 # Couchbase username and password
@@ -115,7 +115,7 @@ doHealthCheck() {
 
 # We only need one IP from the healthy cluster in order to join it.
 getHealthyClusterIp() {
-    echo $(curl -Lsf http://${CONSUL}:8500/v1/health/service/couchbase?passing | jq -r .[0].Service.Address)
+    echo $(curl -Lsf http://${CONSUL}:8500/v1/health/service/${COUCHBASE_SERVICE_NAME}?passing | jq -r .[0].Service.Address)
 }
 
 # If we fail to join the cluster, then bail out and hit it on the
