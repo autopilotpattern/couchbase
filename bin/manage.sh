@@ -1,328 +1,236 @@
 #!/bin/bash
 
-#
-# This script is run once on startup to find and join a Couchbase cluster
-# it will continue polling for a cluster until one is found
-#
-# The script can also be run with arguments to bootstrap the cluster
-#
+help() {
+    echo "Setup and run a Couchbase cluster node. Uses Consul to find other"
+    echo "nodes in the cluster or bootstraps the cluster if it does not yet"
+    echo "exist."
+    echo
+    echo "Usage: ./manage.sh health    => runs health check and bootstrap."
+    echo "       ./manage.sh <command> => run another function for debugging."
+}
 
-# This container's IP(s)
+trap cleanup EXIT
+
+# This container's private IP
 export IP_PRIVATE=$(ip addr show eth0 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
-IP_HAVEPUBLIC=$(ip link show | grep eth1)
-if [[ $IP_HAVEPUBLIC ]]
-then
-    export IP_PUBLIC=$(ip addr show eth1 | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
-else
-    export IP_PUBLIC=$IP_PRIVATE
-fi
 
 # Discovery vars
 export COUCHBASE_SERVICE_NAME=${COUCHBASE_SERVICE_NAME:-couchbase}
-export CONSUL_HOST=${CONSUL_HOST:-'http://consul:8500'}
+export CONSUL=${CONSUL:-consul}
 
 # Couchbase username and password
 export COUCHBASE_USER=${COUCHBASE_USER:-Administrator}
 export COUCHBASE_PASS=${COUCHBASE_PASS:-password}
+CB_CONN="-c 127.0.0.1:8091 -u ${COUCHBASE_USER} -p ${COUCHBASE_PASS}"
 
 # The bucket to create when bootstrapping
-export COUCHBASE_BUCKET=$2
+export COUCHBASE_BUCKET=${COUCHBASE_BUCKET:-couchbase}
 
-# Couchbase resource limits
-export AVAIL_MEMORY=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
-export AVAIL_CPUS=$(nproc)
-export COUCHBASE_CPUS=$(($AVAIL_CPUS>8?8:$AVAIL_CPUS))
-export COUCHBASE_CPUS=$(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS:1))
-export COUCHBASE_NS_SERVER_VM_EXTRA_ARGS=$(printf '["+S", "%s"]' $COUCHBASE_CPUS)
-export ERL_AFLAGS="+S $COUCHBASE_CPUS"
-export GOMAXPROCS=$COUCHBASE_CPUS
-export COUCHBASE_MEMORY=$((($AVAIL_MEMORY/10)*7))
 
-installed ()
-{
-    echo
-    echo '#'
-    echo '# Couchbase is installed and configured'
-    echo '#'
-    echo "#   Dashboard: http://$IP_PUBLIC:8091"
-    echo "# Internal IP: $IP_PRIVATE"
-    echo "#    Username: $COUCHBASE_USER"
-    echo "#    Password: $COUCHBASE_PASS"
-    echo '#'
+# -------------------------------------------
+# Top-level health check handler
+
+
+health() {
+    # if we're already initialized and joined to a cluster,
+    # we can just run the health check and exit
+    checkLock
+    initNode
+    isNodeInCluster
+    if [ $? -eq 0 ]; then
+        doHealthCheck
+        exit $?
+    fi
+
+    # if there is a healthy cluster we join it, otherwise we try
+    # to create a new cluster. If another node is in the process
+    # of creating a new cluster, we'll wait for it instead.
+    echo 'Looking for an existing cluster...'
+    while true; do
+        local node=$(getHealthyClusterIp)
+        if [[ ${node} != "null" ]]; then
+            joinCluster $node
+        else
+            obtainBootstrapLock
+            if [ $? -eq 0 ]; then
+                initCluster
+            else
+                sleep 3
+            fi
+        fi
+    done
 }
 
 
-# rest a moment while Couchabase starts (it's started from triton-start.)
-sleep 1.3
+# -------------------------------------------
+# Status checking
 
-echo
-echo '#'
-echo '# Testing to see if Couchbase is running yet'
-echo '#'
 
-COUCHBASERESPONSIVE=0
-while [ $COUCHBASERESPONSIVE != 1 ]; do
-    echo -n '.'
+# The couchbase-cli provides no documented mechanism to verify that we've
+# initialized the node. But if we try to node-init with the default password
+# and it fails, then we know we've previously initialized this node.
+# Either way we can merrily continue.
+initNode() {
+    # couchbase takes a while to become responsive on start, so we need to
+    # make sure it's up first.
+    while true; do
+        # an uninitialized node will have default creds
+        couchbase-cli server-info -c 127.0.0.1:8091 -u access -p password &>/dev/null
+        if [ $? -eq 0 ]; then
+            break
+        fi
+        # check the initialized creds as well
+        couchbase-cli server-info ${CB_CONN} &>/dev/null
+        if [ $? -eq 0 ]; then
+            break
+        fi
+        echo -n '.'
+        sleep 1
+    done
+    couchbase-cli node-init -c 127.0.0.1:8091 -u access -p password \
+                  --node-init-data-path=/opt/couchbase/var/lib/couchbase/data \
+                  --node-init-index-path=/opt/couchbase/var/lib/couchbase/data \
+                  --node-init-hostname=${IP_PRIVATE} &>/dev/null \
+        && echo '# Node initialized'
+}
 
-    # test the default u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u access -p password &> /dev/null
-    if [ $? -eq 0 ]; then
-        let COUCHBASERESPONSIVE=1
+isNodeInCluster() {
+    couchbase-cli server-list ${CB_CONN} | grep ${IP_PRIVATE} &>/dev/null
+    return $?
+}
+
+doHealthCheck() {
+    local status=$(couchbase-cli server-info ${CB_CONN} | jq -r .status)
+    if [[ $status != "healthy" ]]; then
+       echo "Node not healthy, status was: $status"
+       return 1
     fi
+    return 0
+}
 
-    # test the alternate u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
-    if [ $? -eq 0 ]
-    then
-        let COUCHBASERESPONSIVE=1
-    else
+
+# -------------------------------------------
+# Joining a cluster
+
+
+# We only need one IP from the healthy cluster in order to join it.
+getHealthyClusterIp() {
+    echo $(curl -Lsf http://${CONSUL}:8500/v1/health/service/couchbase?passing | jq -r .[0].Service.Address)
+}
+
+# If we fail to join the cluster, then bail out and hit it on the
+# next health check
+joinCluster(){
+    echo '# Joining cluster...'
+    local node=$1
+    curl -Lsif -u ${COUCHBASE_USER}:${COUCHBASE_PASS} \
+         -d "hostname=${IP_PRIVATE}&user=admin&password=password" \
+         "http://${node}:8091/controller/addNode" || exit 1
+    echo 'Joined cluster!'
+    rebalance
+    exit 0
+}
+
+# We need to rebalance for each node because we can't guarantee that we won't
+# try to rebalance while another node is coming up. Doing this in a loop because
+# we can't queue-up rebalances -- the rebalance command cannot be called while a
+# rebalance is in progress
+rebalance() {
+    echo '# Rebalancing cluster...'
+    while true; do
+        echo -n '.'
+        couchbase-cli rebalance ${CB_CONN} && return
         sleep .7
-    fi
-done
-sleep 1
+    done
+}
 
-# it's responsive, is it already configured?
-couchbase-cli server-list -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
-if [ $? -eq 0 ]; then
+
+# -------------------------------------------
+# Bootstrapping a cluster
+
+# Try to obtain a lock in Consul. If we can't get the lock then another node
+# is trying to bootstrap the cluster. The cluster-init node will have 120s
+# to show up as healthy in Consul.
+obtainBootstrapLock() {
+    echo 'No cluster nodes found, trying to obtain lock on bootstrap...'
+    local session=$(curl -Lsf -XPUT -d '{"Name": "couchbase-bootstrap", "TTL": "120s"}' http://${CONSUL}:8500/v1/session/create | jq -r .ID) || return $?
+    local lock=$(curl -Lsf -XPUT http://${CONSUL}:8500/v1/kv/couchbase-bootstrap?acquire=$session)
+    if [[ $lock == "true" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# bootstrap the Couchbase cluster and set resource limits
+initCluster() {
     echo
-    echo '#'
-    echo '# Already joined to cluster...'
-    echo '#'
-    installed
+    echo '# Bootstrapping cluster...'
 
-    exit
-fi
+    # Couchbase resource limits
+    local avail_memory=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
+    local cb_memory=$((($avail_memory/10)*7))
+    local avail_cpus=$(nproc)
+    local cb_cpus=$(($avail_cpus>8?8:$avail_cpus))
+    local cb_cpus=$(($cb_cpus>1?$cb_cpus:1))
 
-echo
-echo '#'
-echo '# Checking Consul availability'
-echo '#'
+    couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
+                  --cluster-init-username=${COUCHBASE_USER} \
+                  --cluster-init-password=${COUCHBASE_PASS} \
+                  --cluster-init-port=8091 \
+                  --cluster-init-ramsize=${cb_memory} \
+                  --services=data,index,query
 
-curl -fs --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/services &> /dev/null
-if [ $? -ne 0 ]
-then
-    echo '#'
-    echo '# Consul is required, but unreachable'
-    echo '#'
-    curl $CONSUL_HOST/v1/agent/services
-    exit
-else
-    echo '# Consul instance found and responsive'
-    echo '#'
-fi
+    couchbase-cli bucket-create ${CB_CONN} \
+                  --bucket=${COUCHBASE_BUCKET} \
+                  --bucket-type=couchbase \
+                  --bucket-ramsize=${cb_memory} \
+                  --bucket-replica=1
 
-#
-# Register this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
-#
-curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID":"%s-unconfigured-%s","Name":"%s-unconfigured","Address":"%s","checks": [{"ttl": "5900s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $IP_PRIVATE)"
-
-# pass the healthcheck
-curl -f --retry 7 --retry-delay 3 "$CONSUL_HOST/v1/agent/check/pass/service:$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME?note=initial+startup"
-
-
-
-COUCHBASERESPONSIVE=0
-while [ $COUCHBASERESPONSIVE != 1 ]; do
-    echo -n '.'
-
-    # test the default u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u access -p password &> /dev/null
-    if [ $? -eq 0 ]; then
-        let COUCHBASERESPONSIVE=1
-    fi
-
-    # test the alternate u/p
-    couchbase-cli server-info -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS &> /dev/null
-    if [ $? -eq 0 ]
-    then
-        let COUCHBASERESPONSIVE=1
-    else
-        sleep .7
-    fi
-done
-sleep 1
-
-echo
-echo '#'
-echo '# Initializing node'
-echo '#'
-
-COUCHBASERESPONSIVE=0
-while [ $COUCHBASERESPONSIVE != 1 ]; do
-    echo -n '.'
-
-    /opt/couchbase/bin/couchbase-cli node-init -c 127.0.0.1:8091 -u access -p password \
-        --node-init-data-path=/opt/couchbase/var/lib/couchbase/data \
-        --node-init-index-path=/opt/couchbase/var/lib/couchbase/data \
-        --node-init-hostname=$IP_PRIVATE
-
-    if [ $? -eq 0 ]
-    then
-        let COUCHBASERESPONSIVE=1
-    else
-        sleep .7
-    fi
-done
-echo
-
-
-if [ "$1" = 'bootstrap' ]
-then
-    echo '#'
-    echo '# Bootstrapping cluster'
-    echo '#'
-
-    #
-    # Deregister this instance from the list of unconfigured instances in Consul
-    #
-    curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/deregister/$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME
-
-    # initializing the cluster
-    COUCHBASERESPONSIVE=0
-    while [ $COUCHBASERESPONSIVE != 1 ]; do
-        echo -n '.'
-
-        /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
-            --cluster-init-username=$COUCHBASE_USER \
-            --cluster-init-password=$COUCHBASE_PASS \
-            --cluster-init-port=8091 \
-            --cluster-init-ramsize=$COUCHBASE_MEMORY \
-            --services=data,index,query
-
-        if [ $? -eq 0 ]
-        then
-            let COUCHBASERESPONSIVE=1
-        else
-            sleep .7
-        fi
-    done
-
-    # creating the bucket
-    COUCHBASERESPONSIVE=0
-    while [ $COUCHBASERESPONSIVE != 1 ]; do
-        echo -n '.'
-
-        /opt/couchbase/bin/couchbase-cli bucket-create -c 127.0.01:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS \
-            --bucket=$COUCHBASE_BUCKET \
-            --bucket-type=couchbase \
-            --bucket-ramsize=$COUCHBASE_MEMORY \
-            --bucket-replica=1
-
-        if [ $? -eq 0 ]
-        then
-            let COUCHBASERESPONSIVE=1
-        else
-            sleep .7
-        fi
-    done
+    local max_threads=$(($cb_cpus>1?$cb_cpus/2:1))
 
     # limit the number of threads for various operations on this bucket
-    # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html for more details
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_writers $(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS/2:1))
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_readers $(($COUCHBASE_CPUS>1?$COUCHBASE_CPUS/2:1))
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_auxio 1
-    /opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b $COUCHBASE_BUCKET set flush_param max_num_nonio 1
+    # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html
+    # for more details
 
-else
-    echo '#'
-    echo '# Looking for an existing cluster'
-    echo '#'
+    local cbepctl_cli="/opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b ${COUCHBASE_BUCKET}"
+    $cbepctl_cli set flush_param max_num_writers $max_threads
+    $cbepctl_cli set flush_param max_num_readers $max_threads
+    $cbepctl_cli set flush_param max_num_auxio 1
+    $cbepctl_cli set flush_param max_num_nonio 1
 
-    CLUSTERFOUND=0
-    while [ $CLUSTERFOUND != 1 ]; do
-        echo -n '.'
-
-        CLUSTERIP=$(curl -L -s -f $CONSUL_HOST/v1/health/service/$COUCHBASE_SERVICE_NAME?passing | json -aH Service.Address | head -1)
-        if [ -n "$CLUSTERIP" ]
-        then
-            let CLUSTERFOUND=1
-        else
-            # Update the healthcheck for this unconfigured Couchbase instance in Consul for discovery by the configuration/bootstrap agent
-            curl -f --retry 7 --retry-delay 3 "$CONSUL_HOST/v1/agent/check/pass/service:$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME?note=polling+for+cluster"
-
-            # sleep for a bit
-            sleep 7
-        fi
-    done
-
-    #
-    # Deregister this instance from the list of unconfigured instances in Consul
-    #
-    curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/deregister/$COUCHBASE_SERVICE_NAME-unconfigured-$HOSTNAME
-
+    echo '# Cluster bootstrapped'
     echo
-    echo '#'
-    echo '# Joining cluster...'
-    echo '#'
-
-    COUCHBASERESPONSIVE=0
-    while [ $COUCHBASERESPONSIVE != 1 ]; do
-        echo -n '.'
-
-        # This is the moment that we're adding an unconfigured node to an already configured cluster.
-        # We have to speak to the configured cluster ($CLUSTERIP) using the user selected u/p,
-        # ...but tell it to add this new node using its factory default u/p.
-
-        curl -s -i -f -u $COUCHBASE_USER:$COUCHBASE_PASS \
-            -d "hostname=${IP_PRIVATE}&user=admin&password=password" \
-            "http://$CLUSTERIP:8091/controller/addNode"
-
-        if [ $? -eq 0 ]
-        then
-            let COUCHBASERESPONSIVE=1
-        else
-            sleep .7
-        fi
-    done
-
-    echo
-    echo '#'
-    echo '# Rebalancing cluster'
-    echo '#'
-
-    # doing this in a loop in case multiple containers are started at once
-    # it seems the rebalance command cannot be called while a rebalance is in progress
-    COUCHBASERESPONSIVE=0
-    while [ $COUCHBASERESPONSIVE != 1 ]; do
-        echo -n '.'
-
-        couchbase-cli rebalance -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS
-        if [ $? -eq 0 ]
-        then
-            let COUCHBASERESPONSIVE=1
-        else
-            sleep .7
-        fi
-    done
-fi
+    exit 0
+}
 
 
-echo
-echo '#'
-echo '# Confirming cluster health...'
-echo '#'
+# -------------------------------------------
+# helpers
 
-COUCHBASERESPONSIVE=0
-while [ $COUCHBASERESPONSIVE != 1 ]; do
-    echo -n '.'
-
-    couchbase-cli server-list -c 127.0.0.1:8091 -u $COUCHBASE_USER -p $COUCHBASE_PASS
-    if [ $? -eq 0 ]
-    then
-        let COUCHBASERESPONSIVE=1
-    else
-        sleep .7
+# make sure we're running only one init process at a time
+# even with overlapping health check handlers
+checkLock() {
+    if ! mkdir /var/lock/couchbase-init; then
+        echo 'couchbase-init lock in place, skipping'
     fi
+}
 
-    # if this never exits, then it will never register as a healthy node in the cluster
-    # watch the logs for that...
+cleanup() {
+    rmdir /var/lock/couchbase-init
+}
+
+# -------------------------------------------
+
+until
+    cmd=$1
+    if [ -z "$cmd" ]; then
+        help
+    fi
+    shift 1
+    $cmd "$@"
+    [ "$?" -ne 127 ]
+do
+    help
+    exit
 done
-
-echo
-echo '#'
-echo '# Register the configured Couchbase instance'
-echo '#'
-
-curl -f --retry 7 --retry-delay 3 $CONSUL_HOST/v1/agent/service/register -d "$(printf '{"ID": "%s-%s","Name": "%s","tags": ["couchbase","demo"],"Address": "%s","checks": [{"http": "http://%s:8091/index.html","interval": "13s","timeout": "1s"}]}' $COUCHBASE_SERVICE_NAME $HOSTNAME $COUCHBASE_SERVICE_NAME $IP_PRIVATE $IP_PRIVATE)"
-
-installed

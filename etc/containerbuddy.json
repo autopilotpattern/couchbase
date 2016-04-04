@@ -1,13 +1,19 @@
 {
   "consul": "{{ .CONSUL }}:8500",
-  "onStart": "/usr/local/bin/manage.sh start",
   "services": [
     {
-      "name": "couchbase",
-      "port": 80,
-      "health": "/usr/local/bin/manage.sh check",
+      "name": "couchbase-api",
+      "port": 8092,
+      "health": ["/usr/local/bin/manage.sh", "health"],
       "poll": 5,
-      "ttl": 15,
+      "ttl": 15
+    },
+    {
+      "name": "couchbase-web",
+      "port": 8091,
+      "health": ["curl", "-Ls", "-o", "/dev/null", "--fail", "http://localhost:8091"],
+      "poll": 5,
+      "ttl": 15
     }
   ]
 }

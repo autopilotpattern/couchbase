@@ -1,24 +1,11 @@
 # Autopilot pattern Couchbase
 FROM 		couchbase/server:enterprise-4.0.0
 
-# Install Node.js, similar to
-# https://github.com/joyent/docker-node/blob/428d5e69763aad1f2d8f17c883112850535e8290/0.12/Dockerfile
-RUN gpg --keyserver pool.sks-keyservers.net --recv-keys 7937DFD2AB06298B2293C3187D33FF9D0246406D 114F43EE0176B71C7BC219DD50A3051F888C628D
-
-ENV NODE_VERSION 0.12.4
-ENV NPM_VERSION 2.10.1
-
-RUN curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.gz" \
-	&& curl -SLO "http://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc" \
-	&& gpg --verify SHASUMS256.txt.asc \
-	&& grep " node-v$NODE_VERSION-linux-x64.tar.gz\$" SHASUMS256.txt.asc | sha256sum -c - \
-	&& tar -xzf "node-v$NODE_VERSION-linux-x64.tar.gz" -C /usr/local --strip-components=1 \
-	&& rm "node-v$NODE_VERSION-linux-x64.tar.gz" SHASUMS256.txt.asc \
-	&& npm install -g npm@"$NPM_VERSION" \
-	&& npm cache clear
-
-# Install the json tool
-RUN npm install -g json
+# install jq
+RUN apt-get update && \
+    apt-get install -y \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
 
 # Add Containerbuddy
 ENV CONTAINERBUDDY_VER 1.3.0
@@ -39,9 +26,8 @@ COPY bin/* /usr/local/bin/
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
 VOLUME /opt/couchbase/var
 
-CMD ["/bin/containerbuddy",
-     "/usr/sbin/runsvdir-start",
-     "couchbase-server",
-     "--",
-     "-noinput" # so we don't get dropped into the erlang shell
-]
+CMD ["/bin/containerbuddy", \
+     "/usr/sbin/runsvdir-start", \
+     "couchbase-server", \
+     "--", \
+     "-noinput"] # so we don't get dropped into the erlang shell

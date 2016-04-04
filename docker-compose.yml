@@ -8,10 +8,7 @@ couchbase:
     ports:
         - 8091
         - 8092
-    environment:
-        - CONSUL
-        - COUCHBASE_USER
-        - COUCHBASE_PASS
+    env_file: _env
     labels:
       - triton.cns.services=couchbase
 
