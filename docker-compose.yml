@@ -2,7 +2,7 @@
 # Scale this tier and each additional instance will automatically
 # self-configure as a member of the cluster
 couchbase:
-    image: autopilotpattern/couchbase:latest # enterprise-4.0.0-r1
+    image: autopilotpattern/couchbase:enterprise-4.0.0-r2
     restart: always
     mem_limit: 4096m
     ports:
