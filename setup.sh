@@ -32,12 +32,6 @@ TRITON_ACCOUNT=
 # Check for correct configuration
 check() {
 
-    # setup environment file
-    echo 'COUCHBASE_USER=' > _env
-    echo 'COUCHBASE_PASS=' >> _env
-    echo >> _env
-    echo 'Edit the _env file to include a COUCHBASE_USER and COUCHBASE_PASS'
-
     command -v docker >/dev/null 2>&1 || {
         echo
         tput rev  # reverse
@@ -103,7 +97,14 @@ check() {
         exit 1
     fi
 
-    echo CONSUL=consul.svc.${TRITON_ACCOUNT}.${TRITON_DC}.cns.joyent.com >> _env
+    if [ ! -f "_env" ]; then
+        echo "Creating a configuration file..."
+        echo 'COUCHBASE_USER=' > _env
+        echo 'COUCHBASE_PASS=' >> _env
+        echo >> _env
+        echo CONSUL=consul.svc.${TRITON_ACCOUNT}.${TRITON_DC}.cns.joyent.com >> _env
+        echo 'Edit the _env file to include a COUCHBASE_USER and COUCHBASE_PASS'
+    fi
 }
 
 # ---------------------------------------------------
