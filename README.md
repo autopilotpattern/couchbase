@@ -67,6 +67,10 @@ cb_couchbase_3   /bin/containerbuddy /usr/...     Up      11207/tcp, 11210/tcp,
 
 A shell script (`./demo.sh`) has been provided to run these two commands as well as find and open the Couchbase dashboard in your web browser. Sign in with the username and password you provided in the environment file to see the working cluster. As the cluster scales up you'll be able to see node(s) join the cluster.
 
+### Initializing a bucket
+
+Standing up the cluster does not initialize any Couchbase buckets, because these are specific to your application(s). The `./demo.sh` script will create a Couchbase bucket using the Couchbase REST API as an example of what your application's `preStart` handler should do.
+
 ### Consul notes
 
 [Bootstrapping](https://www.consul.io/docs/guides/bootstrapping.html), [Consul clusters](https://www.consul.io/intro/getting-started/join.html), and the details about [adding and removing nodes](https://www.consul.io/docs/guides/servers.html). The [CLI](https://www.consul.io/docs/commands/index.html) and [HTTP](https://www.consul.io/docs/agent/http.html) API are also documented.

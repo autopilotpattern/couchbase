@@ -23,10 +23,6 @@ export COUCHBASE_USER=${COUCHBASE_USER:-Administrator}
 export COUCHBASE_PASS=${COUCHBASE_PASS:-password}
 CB_CONN="-c 127.0.0.1:8091 -u ${COUCHBASE_USER} -p ${COUCHBASE_PASS}"
 
-# The bucket to create when bootstrapping
-export COUCHBASE_BUCKET=${COUCHBASE_BUCKET:-couchbase}
-
-
 # -------------------------------------------
 # Top-level health check handler
 
@@ -170,9 +166,6 @@ initCluster() {
     # Couchbase resource limits
     local avail_memory=$(free -m | grep -o "Mem:\s*[0-9]*" | grep -o "[0-9]*")
     local cb_memory=$((($avail_memory/10)*7))
-    local avail_cpus=$(nproc)
-    local cb_cpus=$(($avail_cpus>8?8:$avail_cpus))
-    local cb_cpus=$(($cb_cpus>1?$cb_cpus:1))
 
     couchbase-cli cluster-init -c 127.0.0.1:8091 -u access -p password \
                   --cluster-init-username=${COUCHBASE_USER} \
@@ -180,24 +173,6 @@ initCluster() {
                   --cluster-init-port=8091 \
                   --cluster-init-ramsize=${cb_memory} \
                   --services=data,index,query
-
-    couchbase-cli bucket-create ${CB_CONN} \
-                  --bucket=${COUCHBASE_BUCKET} \
-                  --bucket-type=couchbase \
-                  --bucket-ramsize=${cb_memory} \
-                  --bucket-replica=1
-
-    local max_threads=$(($cb_cpus>1?$cb_cpus/2:1))
-
-    # limit the number of threads for various operations on this bucket
-    # See http://docs.couchbase.com/admin/admin/CLI/CBepctl/cbepctl-threadpool-tuning.html
-    # for more details
-
-    local cbepctl_cli="/opt/couchbase/bin/cbepctl 127.0.0.1:11210 -b ${COUCHBASE_BUCKET}"
-    $cbepctl_cli set flush_param max_num_writers $max_threads
-    $cbepctl_cli set flush_param max_num_readers $max_threads
-    $cbepctl_cli set flush_param max_num_auxio 1
-    $cbepctl_cli set flush_param max_num_nonio 1
 
     echo '# Cluster bootstrapped'
     echo
