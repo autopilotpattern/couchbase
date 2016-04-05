@@ -1,0 +1,28 @@
+# The first instance will automatically bootstrap the cluster.
+# Scale this tier and each additional instance will automatically
+# self-configure as a member of the cluster
+couchbase:
+    image: autopilotpattern/couchbase:enterprise-4.0.0-r2
+    restart: always
+    mem_limit: 4096m
+    ports:
+        - 8091
+        - 8092
+    env_file: _env
+    labels:
+      - triton.cns.services=couchbase
+
+
+# Start with a single host which will bootstrap the cluster.
+# In production we'll want to use an HA cluster.
+consul:
+    image: progrium/consul:latest
+    restart: always
+    mem_limit: 128m
+    ports:
+      - 8500 # expose Consul's UI on the public IP
+    dns:
+       - 127.0.0.1
+    labels:
+      - triton.cns.services=consul
+    command: -server -bootstrap -ui-dir /ui
