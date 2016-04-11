@@ -1,5 +1,5 @@
 # Autopilot pattern Couchbase
-FROM 		couchbase/server:enterprise-4.0.0
+FROM couchbase/server:enterprise-4.0.0
 
 # install jq
 RUN apt-get update && \
@@ -7,13 +7,13 @@ RUN apt-get update && \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Add Containerbuddy
-ENV CONTAINERBUDDY_VER 1.3.0
+# get Containerbuddy release
+ENV CONTAINERBUDDY_VERSION 1.4.0-rc3
 ENV CONTAINERBUDDY file:///etc/containerbuddy.json
 
-RUN export CB_SHA1=c25d3af30a822f7178b671007dcd013998d9fae1 \
+RUN export CB_SHA1=24a2babaff53e9829bcf4772cfe0462f08838a11 \
     && curl -Lso /tmp/containerbuddy.tar.gz \
-         "https://github.com/joyent/containerbuddy/releases/download/${CONTAINERBUDDY_VER}/containerbuddy-${CONTAINERBUDDY_VER}.tar.gz" \
+         "https://github.com/joyent/containerbuddy/releases/download/${CONTAINERBUDDY_VERSION}/containerbuddy-${CONTAINERBUDDY_VERSION}.tar.gz" \
     && echo "${CB_SHA1}  /tmp/containerbuddy.tar.gz" | sha1sum -c \
     && tar zxf /tmp/containerbuddy.tar.gz -C /bin \
     && rm /tmp/containerbuddy.tar.gz

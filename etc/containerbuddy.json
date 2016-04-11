@@ -15,5 +15,31 @@
       "poll": 5,
       "ttl": 15
     }
-  ]
+  ],
+  "telemetry": {
+    "port": 9090,
+    "sensors": [
+      {
+        "name": "couchbase_cpu_utilization",
+        "help": "Couchbase CPU utilization rate",
+        "type": "gauge",
+        "poll": 5,
+        "check": ["/usr/local/bin/manage.sh", "stats", "systemStats.cpu_utilization_rate"]
+      },
+      {
+        "name": "couchbase_mem_free",
+        "help": "Couchbase node memory free",
+        "type": "gauge",
+        "poll": 5,
+        "check": ["/usr/local/bin/manage.sh", "stats", "systemStats.mem_free"]
+      },
+      {
+        "name": "couchbase_swap_used",
+        "help": "Couchbase swap usage",
+        "type": "gauge",
+        "poll": 5,
+        "check": ["/usr/local/bin/manage.sh", "stats", "systemStats.swap_used"]
+      }
+    ]
+  }
 }
