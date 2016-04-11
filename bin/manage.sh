@@ -179,6 +179,15 @@ initCluster() {
     exit 0
 }
 
+# filters JSON coming back from REST API for this node with argument. examples:
+# stats mcdMemoryAllocated
+# stats systemStats.mem_free
+stats() {
+    curl -s -u ${COUCHBASE_USER}:${COUCHBASE_PASS} \
+         http://127.0.0.1:8091/pools/default | \
+        jq -r "$(printf '.nodes[] | select(.hostname | contains("%s")) | .%s' "${IP_PRIVATE}" "$1")"
+}
+
 
 # -------------------------------------------
 # helpers
@@ -192,7 +201,7 @@ checkLock() {
 }
 
 cleanup() {
-    rmdir /var/lock/couchbase-init
+    rm -rf /var/lock/couchbase-init
 }
 
 # -------------------------------------------
