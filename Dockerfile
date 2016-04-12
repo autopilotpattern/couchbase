@@ -7,26 +7,26 @@ RUN apt-get update && \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# get Containerbuddy release
-ENV CONTAINERBUDDY_VERSION 1.4.0-rc3
-ENV CONTAINERBUDDY file:///etc/containerbuddy.json
+# get ContainerPilot release
+ENV CONTAINERPILOT_VERSION 2.0.0
+ENV CONTAINERPILOT file:///etc/containerpilot.json
 
-RUN export CB_SHA1=24a2babaff53e9829bcf4772cfe0462f08838a11 \
-    && curl -Lso /tmp/containerbuddy.tar.gz \
-         "https://github.com/joyent/containerbuddy/releases/download/${CONTAINERBUDDY_VERSION}/containerbuddy-${CONTAINERBUDDY_VERSION}.tar.gz" \
-    && echo "${CB_SHA1}  /tmp/containerbuddy.tar.gz" | sha1sum -c \
-    && tar zxf /tmp/containerbuddy.tar.gz -C /bin \
-    && rm /tmp/containerbuddy.tar.gz
+RUN export CP_SHA1=a82b1257328551eb93fc9a8cc1dd3f3e64664dd5 \
+    && curl -Lso /tmp/containerpilot.tar.gz \
+         "https://github.com/joyent/containerpilot/releases/download/${CONTAINERPILOT_VERSION}/containerpilot-${CONTAINERPILOT_VERSION}.tar.gz" \
+    && echo "${CP_SHA1}  /tmp/containerpilot.tar.gz" | sha1sum -c \
+    && tar zxf /tmp/containerpilot.tar.gz -C /bin \
+    && rm /tmp/containerpilot.tar.gz
 
-# Add Containerbuddy configuration files and handlers
-COPY etc/containerbuddy.json etc/containerbuddy.json
+# Add ContainerPilot configuration files and handlers
+COPY etc/containerpilot.json etc/containerpilot.json
 COPY bin/* /usr/local/bin/
 
 # Metadata
 EXPOSE 8091 8092 11207 11210 11211 18091 18092
 VOLUME /opt/couchbase/var
 
-CMD ["/bin/containerbuddy", \
+CMD ["/bin/containerpilot", \
      "/usr/sbin/runsvdir-start", \
      "couchbase-server", \
      "--", \
