@@ -9,7 +9,7 @@ Included here is everything you need to deploy a Couchbase cluster that can be e
 
 ### Bootstrapping Couchbase
 
-A new Couchbase node only needs to know where to find one other node in order to join a cluster. In this pattern we're using a Containerbuddy `health` check handler to coordinate the creation of the cluster. We're using [Consul](https://www.consul.io/) as a service discovery layer. Consul is running in its default configuration as delivered in [Jeff Lindsay's excellent image](https://registry.hub.docker.com/u/progrium/consul/), but Couchbase uses a Containerbuddy health check handler to enable the magic [here](https://github.com/autopilotpattern/couchbase/blob/master/bin/manage.sh).
+A new Couchbase node only needs to know where to find one other node in order to join a cluster. In this pattern we're using a ContainerPilot `health` check handler to coordinate the creation of the cluster. We're using [Consul](https://www.consul.io/) as a service discovery layer. Consul is running in its default configuration as delivered in [Jeff Lindsay's excellent image](https://registry.hub.docker.com/u/progrium/consul/), but Couchbase uses a ContainerPilot health check handler to enable the magic [here](https://github.com/autopilotpattern/couchbase/blob/master/bin/manage.sh).
 
 Each time the [`health` handler](https://github.com/autopilotpattern/couchbase/blob/master/bin/manage.sh) runs, it first checks to see if the node has already been joined to a cluster. If so, it continues on to health check the node and then send a heartbeat to Consul. If not, the handler needs to figure out whether the cluster has been initialized. The steps are as follows:
 
@@ -51,17 +51,17 @@ $ docker-compose -p cb ps
 Name                   Command                  State                   Ports
 -------------------------------------------------------------------------------------
 cb_consul_1      /bin/start -server -bootst ...   Up      53/tcp, 53/udp, 8300/tcp...
-cb_couchbase_1   /bin/containerbuddy /usr/...     Up      11207/tcp, 11210/tcp,
+cb_couchbase_1   /bin/containerpilot /usr/...     Up      11207/tcp, 11210/tcp,
                                                           11211/tcp, 18091/tcp,
                                                           18092/tcp, 8093/tcp,
                                                           0.0.0.0:8091/tcp->8091/tcp,
                                                           0.0.0.0:8092/tcp->8092/tcp,
-cb_couchbase_2   /bin/containerbuddy /usr/...     Up      11207/tcp, 11210/tcp,
+cb_couchbase_2   /bin/containerpilot /usr/...     Up      11207/tcp, 11210/tcp,
                                                           11211/tcp, 18091/tcp,
                                                           18092/tcp, 8093/tcp,
                                                           0.0.0.0:8091/tcp->8091/tcp,
                                                           0.0.0.0:8092/tcp->8092/tcp,
-cb_couchbase_3   /bin/containerbuddy /usr/...     Up      11207/tcp, 11210/tcp,
+cb_couchbase_3   /bin/containerpilot /usr/...     Up      11207/tcp, 11210/tcp,
                                                           11211/tcp, 18091/tcp,
                                                           18092/tcp, 8093/tcp,
                                                           0.0.0.0:8091/tcp->8091/tcp,
