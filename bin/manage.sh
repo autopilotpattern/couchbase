@@ -183,7 +183,7 @@ initCluster() {
 # stats mcdMemoryAllocated
 # stats systemStats.mem_free
 stats() {
-    curl -s -u ${COUCHBASE_USER}:${COUCHBASE_PASS} \
+    curl -s --fail -u ${COUCHBASE_USER}:${COUCHBASE_PASS} \
          http://127.0.0.1:8091/pools/default | \
         jq -r "$(printf '.nodes[] | select(.hostname | contains("%s")) | .%s' "${IP_PRIVATE}" "$1")"
 }
