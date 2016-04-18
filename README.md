@@ -3,7 +3,7 @@
 [![DockerPulls](https://img.shields.io/docker/pulls/autopilotpattern/couchbase.svg)](https://registry.hub.docker.com/u/autopilotpattern/couchbase/)
 [![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/couchbase.svg)](https://registry.hub.docker.com/u/autopilotpattern/couchbase/)
 [![ImageLayers](https://badge.imagelayers.io/autopilotpattern/couchbase:latest.svg)](https://imagelayers.io/?images=autopilotpattern/couchbase:latest)
-[![Join the chat at https://gitter.im/autopilotpattern/couchbase](https://badges.gitter.im/autopilotpattern/couchbase.svg)](https://gitter.im/autopilotpattern/couchbase)
+[![Join the chat at https://gitter.im/autopilotpattern/general](https://badges.gitter.im/autopilotpattern/general.svg)](https://gitter.im/autopilotpattern/general)
 
 This repo is a demonstration of the [Autopilot Pattern](http://autopilotpattern.io/) as applied to [Couchbase](http://www.couchbase.com/). Couchbase's built-in cluster awareness and automatic management of data, including sharding and cross-datacenter replication make it ideal for deployment as a part of an entire stack using the Autopilot Pattern.
 
