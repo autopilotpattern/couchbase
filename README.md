@@ -1,9 +1,11 @@
-# Autopilot pattern for Couchbase
+# Autopilot Pattern Couchbase
 
 [![DockerPulls](https://img.shields.io/docker/pulls/autopilotpattern/couchbase.svg)](https://registry.hub.docker.com/u/autopilotpattern/couchbase/)
- [![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/couchbase.svg)](https://registry.hub.docker.com/u/autopilotpattern/couchbase/)
+[![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/couchbase.svg)](https://registry.hub.docker.com/u/autopilotpattern/couchbase/)
+[![ImageLayers](https://badge.imagelayers.io/autopilotpattern/couchbase:latest.svg)](https://imagelayers.io/?images=autopilotpattern/couchbase:latest)
+[![Join the chat at https://gitter.im/autopilotpattern/couchbase](https://badges.gitter.im/autopilotpattern/couchbase.svg)](https://gitter.im/autopilotpattern/couchbase)
 
-This repo is a demonstration of the [autopilot pattern](http://autopilotpattern.io/) as applied to [Couchbase](http://www.couchbase.com/). Couchbase's built-in cluster awareness and automatic management of data, including sharding and cross-datacenter replication make it ideal for deployment as a part of an entire stack using the autopilot pattern.
+This repo is a demonstration of the [Autopilot Pattern](http://autopilotpattern.io/) as applied to [Couchbase](http://www.couchbase.com/). Couchbase's built-in cluster awareness and automatic management of data, including sharding and cross-datacenter replication make it ideal for deployment as a part of an entire stack using the Autopilot Pattern.
 
 Included here is everything you need to deploy a Couchbase cluster that can be easily scaled just by using `docker-compose scale couchbase=$n`. The repo consists of a Dockerfile to build a Couchbase container image, a couple of shell scripts to setup your environment and assist orchestration, and a Docker Compose file to tie it all together.
 
